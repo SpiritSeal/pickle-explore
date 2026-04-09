@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🥒 Pickle Explorer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1e1e2e;
+      --surface:   #181825;
+      --overlay:   #313244;
+      --muted:     #45475a;
+      --subtle:    #6c7086;
+      --text:      #cdd6f4;
+      --subtext:   #a6adc8;
+      --blue:      #89b4fa;
+      --cyan:      #89dceb;
+      --green:     #a6e3a1;
+      --yellow:    #f9e2af;
+      --peach:     #fab387;
+      --mauve:     #cba6f7;
+      --red:       #f38ba8;
+      --teal:      #94e2d5;
+      --sky:       #89dceb;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--overlay);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: -0.01em;
+    }
+
+    #status {
+      font-size: 0.78rem;
+      color: var(--subtext);
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #status .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--cyan);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    #status.loading .spinner { display: inline-block; }
+    #status.ready  { color: var(--green); }
+    #status.error  { color: var(--red); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Layout ──────────────────────────────────────────────── */
+    main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─── Editor panel ────────────────────────────────────────── */
+    #editor-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--overlay);
+    }
+
+    .panel-header {
+      background: var(--surface);
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--overlay);
+      flex-shrink: 0;
+    }
+
+    .panel-header h2 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--subtext);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      flex: 1;
+    }
+
+    .panel-header label {
+      font-size: 0.78rem;
+      color: var(--subtle);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    select {
+      background: var(--overlay);
+      color: var(--text);
+      border: 1px solid var(--muted);
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      outline: none;
+    }
+    select:focus { border-color: var(--cyan); }
+
+    #pickle-btn {
+      background: var(--cyan);
+      color: var(--surface);
+      border: none;
+      border-radius: 6px;
+      padding: 5px 13px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    #pickle-btn:hover:not(:disabled) { background: #74c7ec; }
+    #pickle-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    #editor-container { flex: 1; overflow: hidden; }
+
+    /* ─── Viewer panel ────────────────────────────────────────── */
+    #viewer-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #viewer-meta {
+      font-size: 0.78rem;
+      color: var(--subtext);
+      font-family: monospace;
+    }
+
+    .viewer-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ─── Empty state ─────────────────────────────────────────── */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--subtle);
+      text-align: center;
+      gap: 10px;
+      font-size: 0.9rem;
+    }
+    .empty-state .icon { font-size: 3rem; }
+
+    /* ─── Error box ───────────────────────────────────────────── */
+    .error-box {
+      background: rgba(243,139,168,0.1);
+      border: 1px solid var(--red);
+      border-radius: 7px;
+      padding: 12px 14px;
+      font-family: 'Cascadia Code','Fira Code','Courier New',monospace;
+      font-size: 0.76rem;
+      color: var(--red);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ─── Section labels ──────────────────────────────────────── */
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--subtle);
+      margin-bottom: 7px;
+    }
+
+    /* ─── Hex dump ────────────────────────────────────────────── */
+    #hex-dump-wrap {
+      background: var(--surface);
+      border: 1px solid var(--overlay);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    #hex-dump {
+      font-family: 'Cascadia Code','Fira Code','Courier New',monospace;
+      font-size: 0.78rem;
+      line-height: 1.9;
+      word-break: break-all;
+    }
+
+    .hb {
+      display: inline-block;
+      padding: 1px 5px;
+      margin: 1px 1px;
+      border-radius: 3px;
+      cursor: pointer;
+      outline: 2px solid transparent;
+      transition: outline 0.1s, filter 0.1s;
+    }
+    .hb:hover, .hb.hi { outline: 2px solid rgba(255,255,255,0.55); filter: brightness(1.25); }
+
+    /* ─── Legend ──────────────────────────────────────────────── */
+    #legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.74rem;
+      color: var(--subtext);
+    }
+    .leg-item { display: flex; align-items: center; gap: 5px; }
+    .leg-swatch { width: 11px; height: 11px; border-radius: 2px; }
+
+    /* ─── Opcode list ─────────────────────────────────────────── */
+    #opcodes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .op-entry {
+      background: var(--surface);
+      border: 1px solid var(--overlay);
+      border-radius: 7px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.1s;
+    }
+    .op-entry:hover, .op-entry.hi {
+      border-color: var(--cyan);
+      background: rgba(137,220,235,0.05);
+    }
+
+    .op-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .op-pos {
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: var(--subtle);
+      min-width: 48px;
+    }
+    .op-name {
+      font-weight: 700;
+      font-size: 0.83rem;
+      padding: 1px 8px;
+      border-radius: 4px;
+    }
+    .op-arg {
+      font-family: 'Cascadia Code','Fira Code','Courier New',monospace;
+      font-size: 0.78rem;
+      color: var(--peach);
+    }
+    .op-bytes {
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .op-doc {
+      margin-top: 5px;
+      font-size: 0.77rem;
+      color: var(--subtext);
+      line-height: 1.45;
+      white-space: pre-wrap;
+      border-left: 2px solid var(--overlay);
+      padding-left: 8px;
+    }
+
+    /* ─── Opcode colour categories ────────────────────────────── */
+    /* These classes are applied to both .hb bytes and .op-name badges */
+    .c-meta       { background: rgba(137,180,250,0.22); color: #89b4fa; }
+    .c-stop       { background: rgba(243,139,168,0.22); color: #f38ba8; }
+    .c-memo       { background: rgba(148,226,213,0.22); color: #94e2d5; }
+    .c-type       { background: rgba(166,227,161,0.22); color: #a6e3a1; }
+    .c-string     { background: rgba(249,226,175,0.22); color: #f9e2af; }
+    .c-collection { background: rgba(250,179,135,0.22); color: #fab387; }
+    .c-class      { background: rgba(203,166,247,0.22); color: #cba6f7; }
+    .c-mark       { background: rgba(108,112,134,0.22); color: #6c7086; }
+    .c-other      { background: rgba(108,112,134,0.18); color: #6c7086; }
+
+    /* ─── Scrollbars ──────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🥒 Pickle Explorer</h1>
+  <div id="status" class="loading">
+    <span class="spinner"></span>
+    <span id="status-text">Loading Python runtime…</span>
+  </div>
+</header>
+
+<main>
+  <!-- ── Left: editor ── -->
+  <div id="editor-panel">
+    <div class="panel-header">
+      <h2>Python Class</h2>
+      <label>
+        Protocol
+        <select id="protocol-select">
+          <option value="0">0 — ASCII</option>
+          <option value="1">1</option>
+          <option value="2" selected>2 — Default</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+      <button id="pickle-btn" disabled>🥒 Pickle It!</button>
+    </div>
+    <div id="editor-container"></div>
+  </div>
+
+  <!-- ── Right: viewer ── -->
+  <div id="viewer-panel">
+    <div class="panel-header">
+      <h2>Pickle Output</h2>
+      <span id="viewer-meta"></span>
+    </div>
+    <div class="viewer-content" id="viewer-body">
+      <div class="empty-state">
+        <div class="icon">🥒</div>
+        <div>
+          Define a Python class, then click <strong>🥒 Pickle It!</strong><br/>
+          <span style="font-size:0.8rem;opacity:0.7">(or press <kbd style="background:var(--overlay);padding:1px 5px;border-radius:3px">Ctrl+Enter</kbd>)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Monaco Editor loader -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<!-- Pyodide -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+
+<script>
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const DEFAULT_CODE = `class Person:
+    def __init__(self, name="Alice", age=30):
+        self.name = name
+        self.age = age
+`;
+
+// Opcode → colour category mapping
+const CAT_MAP = {
+  PROTO: 'meta', FRAME: 'meta',
+  STOP: 'stop',
+  PUT: 'memo', GET: 'memo', BINPUT: 'memo', BINGET: 'memo',
+  LONG_BINPUT: 'memo', LONG_BINGET: 'memo', MEMOIZE: 'memo',
+  NONE: 'type', NEWTRUE: 'type', NEWFALSE: 'type',
+  INT: 'type', LONG: 'type', BINFLOAT: 'type', FLOAT: 'type',
+  BININT: 'type', BININT1: 'type', BININT2: 'type', LONG1: 'type', LONG4: 'type',
+  STRING: 'string', BINSTRING: 'string', SHORT_BINSTRING: 'string',
+  UNICODE: 'string', BINUNICODE: 'string', SHORT_BINUNICODE: 'string',
+  BINUNICODE8: 'string', BYTES: 'string', SHORT_BINBYTES: 'string',
+  BINBYTES: 'string', BINBYTES8: 'string', BYTEARRAY8: 'string',
+  NEXT_BUFFER: 'string', READONLY_BUFFER: 'string',
+  EMPTY_LIST: 'collection', APPEND: 'collection', APPENDS: 'collection',
+  EMPTY_TUPLE: 'collection', TUPLE: 'collection',
+  TUPLE1: 'collection', TUPLE2: 'collection', TUPLE3: 'collection',
+  EMPTY_DICT: 'collection', DICT: 'collection',
+  SETITEM: 'collection', SETITEMS: 'collection',
+  EMPTY_SET: 'collection', ADDITEMS: 'collection', FROZENSET: 'collection',
+  GLOBAL: 'class', STACK_GLOBAL: 'class', REDUCE: 'class', BUILD: 'class',
+  INST: 'class', OBJ: 'class', NEWOBJ: 'class', NEWOBJ_EX: 'class',
+  EXT1: 'class', EXT2: 'class', EXT4: 'class',
+  MARK: 'mark', POP: 'mark', POP_MARK: 'mark', DUP: 'mark',
+};
+
+const CAT_LABELS = {
+  meta: 'Protocol / Meta',
+  stop: 'Stop',
+  memo: 'Memo / References',
+  type: 'Primitives',
+  string: 'String / Bytes',
+  collection: 'Collections',
+  class: 'Class / Reduce',
+  mark: 'Stack Control',
+  other: 'Other',
+};
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+let editor = null;
+let pyodide = null;
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function cat(name) { return CAT_MAP[name] || 'other'; }
+
+function setStatus(state, text) {
+  const el = document.getElementById('status');
+  el.className = state;
+  document.getElementById('status-text').textContent = text;
+}
+
+// ─── Monaco initialisation ────────────────────────────────────────────────────
+
+require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+
+require(['vs/editor/editor.main'], () => {
+  editor = monaco.editor.create(document.getElementById('editor-container'), {
+    value: DEFAULT_CODE,
+    language: 'python',
+    theme: 'vs-dark',
+    fontSize: 13.5,
+    fontFamily: "'Cascadia Code','Fira Code','Courier New',monospace",
+    fontLigatures: true,
+    minimap: { enabled: false },
+    lineNumbers: 'on',
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    tabSize: 4,
+    insertSpaces: true,
+    renderWhitespace: 'selection',
+    wordWrap: 'on',
+    padding: { top: 8, bottom: 8 },
+  });
+
+  editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+    () => document.getElementById('pickle-btn').click()
+  );
+});
+
+// ─── Pyodide initialisation ───────────────────────────────────────────────────
+
+const PYTHON_SETUP = `
+import pickle, pickletools, json, traceback, inspect, sys
+
+def _analyze(user_code, protocol):
+    try:
+        # Execute in __main__ so pickle can resolve class names by module lookup
+        ns = sys.modules['__main__'].__dict__
+        exec(compile(user_code, '<editor>', 'exec'), ns)
+
+        # Prefer an explicit 'obj' variable that isn't a class
+        if 'obj' in ns and not inspect.isclass(ns['obj']):
+            target = ns['obj']
+        else:
+            # Gather classes defined by the user in __main__
+            classes = [
+                (n, o) for n, o in ns.items()
+                if inspect.isclass(o) and not n.startswith('_')
+                and getattr(o, '__module__', None) == '__main__'
+            ]
+            if not classes:
+                return json.dumps({'error':
+                    'No class found.\\n\\nDefine a Python class (or assign an instance to a variable named \\'obj\\') to explore its pickle encoding.'})
+            cls_name, cls = classes[-1]
+            try:
+                target = cls()
+            except TypeError:
+                try:
+                    target = cls.__new__(cls)
+                except Exception as e:
+                    return json.dumps({'error': f'Cannot instantiate {cls_name}: {e}'})
+
+        data = pickle.dumps(target, protocol=int(protocol))
+
+        ops = list(pickletools.genops(data))
+        opcode_info = []
+        for i, (opcode, arg, pos) in enumerate(ops):
+            end_pos = ops[i + 1][2] if i + 1 < len(ops) else len(data)
+            raw = list(data[pos:end_pos])
+            opcode_info.append({
+                'pos':   pos,
+                'end':   end_pos,
+                'bytes': raw,
+                'hex':   ''.join(f'{b:02x}' for b in raw),
+                'name':  opcode.name,
+                'doc':   (opcode.doc or '').strip(),
+                'arg':   repr(arg),
+            })
+
+        return json.dumps({
+            'success':     True,
+            'class_name':  type(target).__name__,
+            'total_bytes': len(data),
+            'opcodes':     opcode_info,
+        })
+    except Exception:
+        return json.dumps({'error': traceback.format_exc()})
+`;
+
+async function initPyodide() {
+  try {
+    pyodide = await loadPyodide();
+    await pyodide.runPythonAsync(PYTHON_SETUP);
+    setStatus('ready', 'Python ready — Ctrl+Enter to pickle');
+    document.getElementById('pickle-btn').disabled = false;
+  } catch (e) {
+    setStatus('error', 'Failed to load Python runtime');
+    console.error(e);
+  }
+}
+
+// ─── Pickle action ────────────────────────────────────────────────────────────
+
+async function doPickle() {
+  if (!pyodide || !editor) return;
+
+  const code = editor.getValue();
+  const protocol = parseInt(document.getElementById('protocol-select').value, 10);
+  const btn = document.getElementById('pickle-btn');
+  btn.disabled = true;
+  btn.textContent = 'Pickling…';
+
+  try {
+    // Pass code via Pyodide globals to avoid any quoting issues
+    pyodide.globals.set('_user_code', code);
+    pyodide.globals.set('_protocol', protocol);
+    const raw = await pyodide.runPythonAsync('_analyze(_user_code, _protocol)');
+    renderResult(JSON.parse(raw));
+  } catch (e) {
+    renderResult({ error: e.toString() });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🥒 Pickle It!';
+  }
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+
+function renderResult(result) {
+  const body = document.getElementById('viewer-body');
+  const meta = document.getElementById('viewer-meta');
+
+  if (result.error) {
+    meta.textContent = '';
+    body.innerHTML = `<div class="error-box">${escHtml(result.error)}</div>`;
+    return;
+  }
+
+  const { class_name, total_bytes, opcodes } = result;
+  meta.textContent = `${class_name}  ·  ${total_bytes} byte${total_bytes !== 1 ? 's' : ''}`;
+
+  // ── Hex dump ────────────────────────────────────────────────
+  let hexHtml = '';
+  for (let i = 0; i < opcodes.length; i++) {
+    const op = opcodes[i];
+    const c = cat(op.name);
+    for (const b of op.bytes) {
+      hexHtml += `<span class="hb c-${c}" data-idx="${i}">${b.toString(16).padStart(2,'0')}</span>`;
+    }
+  }
+
+  // ── Legend (only categories actually present) ───────────────
+  const usedCats = [...new Set(opcodes.map(op => cat(op.name)))];
+  let legendHtml = '';
+  for (const c of usedCats) {
+    legendHtml += `
+      <div class="leg-item">
+        <span class="leg-swatch c-${c}"></span>
+        <span>${CAT_LABELS[c] || c}</span>
+      </div>`;
+  }
+
+  // ── Opcode list ─────────────────────────────────────────────
+  let opsHtml = '';
+  for (let i = 0; i < opcodes.length; i++) {
+    const op = opcodes[i];
+    const c = cat(op.name);
+    const hexBytes = op.hex.match(/.{2}/g).join(' ');
+    const showArg = op.arg !== 'None' && op.arg !== "b''" && op.arg !== "''";
+    opsHtml += `
+      <div class="op-entry" data-idx="${i}">
+        <div class="op-row">
+          <span class="op-pos">+${('000' + op.pos.toString(16)).slice(-3).toUpperCase()}</span>
+          <span class="op-name c-${c}">${escHtml(op.name)}</span>
+          ${showArg ? `<span class="op-arg">${escHtml(op.arg)}</span>` : ''}
+          <span class="op-bytes">${escHtml(hexBytes)}</span>
+        </div>
+        ${op.doc ? `<div class="op-doc">${escHtml(op.doc)}</div>` : ''}
+      </div>`;
+  }
+
+  // ── Assemble ────────────────────────────────────────────────
+  body.innerHTML = `
+    <div>
+      <div class="section-label">Byte Stream</div>
+      <div id="hex-dump-wrap">
+        <div id="hex-dump">${hexHtml}</div>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Legend</div>
+      <div id="legend">${legendHtml}</div>
+    </div>
+    <div>
+      <div class="section-label">Opcodes — ${opcodes.length} instruction${opcodes.length !== 1 ? 's' : ''}</div>
+      <div id="opcodes-list">${opsHtml}</div>
+    </div>
+  `;
+
+  // ── Hover interactions ──────────────────────────────────────
+  body.querySelectorAll('[data-idx]').forEach(el => {
+    el.addEventListener('mouseenter', () => hilite(el.dataset.idx, true));
+    el.addEventListener('mouseleave', () => hilite(el.dataset.idx, false));
+  });
+
+  body.querySelectorAll('.hb').forEach(el => {
+    el.addEventListener('click', () => {
+      const entry = body.querySelector(`.op-entry[data-idx="${el.dataset.idx}"]`);
+      if (entry) entry.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+}
+
+function hilite(idx, on) {
+  document.querySelectorAll(`[data-idx="${idx}"]`).forEach(el => {
+    el.classList.toggle('hi', on);
+  });
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('pickle-btn').addEventListener('click', doPickle);
+initPyodide();
+</script>
+</body>
+</html>
