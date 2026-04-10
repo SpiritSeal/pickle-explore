@@ -428,6 +428,7 @@ const CAT_LABELS = {
 
 let editor = null;
 let pyodide = null;
+const PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/';
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -536,7 +537,7 @@ def _analyze(user_code, protocol):
 
 async function initPyodide() {
   try {
-    pyodide = await loadPyodide();
+    pyodide = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
     await pyodide.runPythonAsync(PYTHON_SETUP);
     setStatus('ready', 'Python ready — Ctrl+Enter to pickle');
     document.getElementById('pickle-btn').disabled = false;
